@@ -46,8 +46,8 @@ warnings.filterwarnings('ignore')
 
 def save_file(name, content):
     with open(name, "wb") as f:
-        pickle.dump(content, f) 
-        
+        pickle.dump(content, f)
+
 def load_file(name):
     with open(name, "rb") as f:
         content = pickle.load(f)
@@ -55,15 +55,17 @@ def load_file(name):
 
 
 face_landmarker = None
-    
+
 def extract_landmark_job(video_name, nerf=False):
     try:
         if nerf:
             out_name = video_name.replace("/raw/", "/processed/").replace(".mp4","/lms_2d.npy")
         else:
             out_name = video_name.replace("/video/", "/lms_2d/").replace(".mp4","_lms.npy")
+
+        print("save out_name=", out_name)
         if os.path.exists(out_name):
-            # print("out exists, skip...")
+            print("out exists, skip...")
             return
         try:
             os.makedirs(os.path.dirname(out_name), exist_ok=True)
@@ -80,14 +82,14 @@ def extract_landmark_job(video_name, nerf=False):
     except Exception as e:
         traceback.print_exc()
         return False
-        
+
 def out_exist_job(vid_name):
-    out_name = vid_name.replace("/video/", "/lms_2d/").replace(".mp4","_lms.npy") 
+    out_name = vid_name.replace("/video/", "/lms_2d/").replace(".mp4","_lms.npy")
     if os.path.exists(out_name):
         return None
     else:
         return vid_name
-    
+
 def get_todo_vid_names(vid_names):
     if len(vid_names) == 1: # nerf
         return vid_names
@@ -127,7 +129,7 @@ if __name__ == '__main__':
             vid_name_pattern = os.path.join(vid_dir, "*/*/*/*.mp4")
         else:
             raise NotImplementedError()
-        
+
         vid_names_path = os.path.join(vid_dir, "vid_names.pkl")
         if os.path.exists(vid_names_path) and load_names:
             print(f"loading vid names from {vid_names_path}")
@@ -149,14 +151,14 @@ if __name__ == '__main__':
             vid_names = vid_names[process_id * num_samples_per_process : ]
         else:
             vid_names = vid_names[process_id * num_samples_per_process : (process_id+1) * num_samples_per_process]
-    
+
     if not args.reset:
         vid_names = get_todo_vid_names(vid_names)
     print(f"todo videos number: {len(vid_names)}")
 
     fail_cnt = 0
     job_args = [(vid_name, ds_name=='nerf') for vid_name in vid_names]
-    for (i, res) in multiprocess_run_tqdm(extract_landmark_job, job_args, num_workers=args.num_workers, desc=f"Root {args.process_id}: extracing MP-based landmark2d"): 
+    for (i, res) in multiprocess_run_tqdm(extract_landmark_job, job_args, num_workers=args.num_workers, desc=f"Root {args.process_id}: extracing MP-based landmark2d"):
         if res is False:
             fail_cnt += 1
         print(f"finished {i + 1} / {len(vid_names)} = {(i + 1) / len(vid_names):.4f}, failed {fail_cnt} / {i + 1} = {fail_cnt / (i + 1):.4f}")
