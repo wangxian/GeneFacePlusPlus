@@ -24,7 +24,7 @@ from data_util.face3d_helper import Face3DHelper
 from deep_3drecon.secc_renderer import SECC_Renderer
 from data_gen.eg3d.convert_to_eg3d_convention import get_eg3d_convention_camera_pose_intrinsic
 from data_gen.utils.mp_feature_extractors.face_landmarker import index_lm68_from_lm478, index_lm131_from_lm478
-# Face Parsing 
+# Face Parsing
 from data_gen.utils.mp_feature_extractors.mp_segmenter import MediapipeSegmenter
 from data_gen.utils.process_video.extract_segment_imgs import inpaint_torso_job, extract_background
 # other inference utils
@@ -51,7 +51,7 @@ def vis_cano_lm3d_to_imgs(cano_lm3d, hw=512):
     cano_lm3d_[:, 27:36] = cano_lm3d[:, 27:36] # nose
     cano_lm3d_[:, 48:68] = cano_lm3d[:, 48:68] # mouth
     cano_lm3d_[:, 0:17] = cano_lm3d[:, :17] # yaw
-    
+
     cano_lm3d = cano_lm3d_
 
     cano_lm3d = convert_to_np(cano_lm3d)
@@ -63,7 +63,7 @@ def vis_cano_lm3d_to_imgs(cano_lm3d, hw=512):
         # lm2d = cano_lm3d[i_img ,:, 1:] # [68, 2]
         lm2d = cano_lm3d[i_img ,:, :2] # [68, 2]
         img = np.ones([WH, WH, 3], dtype=np.uint8) * 255
-        
+
         for i in range(len(lm2d)):
             x, y = lm2d[i]
             color = (255,0,0)
@@ -95,7 +95,7 @@ def inject_blink_to_lm68(lm68, opened_eye_area_percent=0.6, closed_eye_area_perc
     closed_eye_lm68[:,38] = closed_eye_lm68[:,40] = closed_eye_lm68[:,36] * 0.33 + closed_eye_lm68[:,39] * 0.67
     closed_eye_lm68[:,43] = closed_eye_lm68[:,47] = closed_eye_lm68[:,42] * 0.67 + closed_eye_lm68[:,45] * 0.33
     closed_eye_lm68[:,44] = closed_eye_lm68[:,46] = closed_eye_lm68[:,42] * 0.33 + closed_eye_lm68[:,45] * 0.67
-    
+
     T = len(lm68)
     period = 100
     # blink_factor_lst = np.array([0.4, 0.4, 0.6, 0.8, 1.0, 0.8, 0.6, 0.4, 0.4]) # * 0.9
@@ -179,11 +179,16 @@ class GeneFace2Infer:
             else:
                 model = RADNeRF(hparams)
             load_ckpt(model, f"{head_model_dir}", model_name='model', strict=True)
-        self.dataset_cls = RADNeRFDataset # the dataset only provides head pose 
+        self.dataset_cls = RADNeRFDataset # the dataset only provides head pose
         self.dataset = self.dataset_cls('trainval', training=False)
         eye_area_percents = torch.tensor(self.dataset.eye_area_percents)
-        self.closed_eye_area_percent = torch.quantile(eye_area_percents, q=0.03).item()
-        self.opened_eye_area_percent = torch.quantile(eye_area_percents, q=0.97).item()
+        # self.closed_eye_area_percent = torch.quantile(eye_area_percents, q=0.03).item()
+        # self.opened_eye_area_percent = torch.quantile(eye_area_percents, q=0.97).item()
+
+        # 解决眨眼 | https://github.com/yerfor/GeneFacePlusPlus/issues/188#issuecomment-2267464933
+        self.closed_eye_area_percent = torch.quantile(eye_area_percents, q=0.001).item()
+        self.opened_eye_area_percent = torch.quantile(eye_area_percents, q=0.95).item()
+
         try:
             model = torch.compile(model)
         except:
@@ -195,7 +200,7 @@ class GeneFace2Infer:
         samples = self.prepare_batch_from_inp(inp)
         out_name = self.forward_system(samples, inp)
         return out_name
-        
+
     def prepare_batch_from_inp(self, inp):
         """
         :param inp: {'audio_source_name': (str)}
@@ -221,7 +226,7 @@ class GeneFace2Infer:
             'x_mask': x_mask.cuda(),
             'y_mask': y_mask.cuda(),
             })
-        
+
         sample['audio'] = sample['hubert']
         sample['blink'] = torch.zeros([1, t_x, 1]).long().cuda()
 
@@ -294,7 +299,7 @@ class GeneFace2Infer:
         f0, f0_coarse = extract_f0_from_wav_and_mel(wav, mel)
         f0 = f0.reshape([-1,1])
         return f0
-    
+
     @torch.no_grad()
     def forward_audio2secc(self, batch, inp=None):
         # forward the audio-to-motion
@@ -344,7 +349,7 @@ class GeneFace2Infer:
         upper = torch.quantile(idexp_lm3d_ds_normalized, q=0.97, dim=0)
 
         LLE_percent = inp['lle_percent']
-            
+
         keypoint_mode = self.secc2video_model.hparams.get("nerf_keypoint_mode", "lm68")
         if self.postnet_model is not None:
             idexp_lm3d_mean = idexp_lm3d_mean[:, index_lm68_from_lm478]
@@ -357,7 +362,7 @@ class GeneFace2Infer:
             b,t,*_ = pitch.shape
             raw_pred_lm3d = self.face3d_helper.reconstruct_idexp_lm3d(id, exp).reshape([t, -1, 3])
             raw_pred_lm3d = raw_pred_lm3d[:, index_lm68_from_lm478].reshape([1,t,68*3])
-            
+
             idexp_lm3d = self.postnet_model(raw_pred_lm3d, pitch[:, :exp.shape[0]*2, :]).reshape([t,68*3])
 
             idexp_lm3d_ds_lle = idexp_lm3d_ds[:, index_lm68_from_lm478].reshape([-1, 68*3])
@@ -390,7 +395,7 @@ class GeneFace2Infer:
             idexp_lm3d_ds_lle = idexp_lm3d_ds[:, index_lm68_from_lm478].reshape([-1, 68*3])
             feat_fuse, _, _ = compute_LLE_projection(feats=idexp_lm3d[:, :68*3], feat_database=idexp_lm3d_ds_lle[:, :68*3], K=10)
             # feat_fuse = smooth_features_xd(feat_fuse, kernel_size=3)
-            
+
             idexp_lm3d[:, :68*3] = LLE_percent * feat_fuse + (1-LLE_percent) * idexp_lm3d[:,:68*3]
             idexp_lm3d = idexp_lm3d.reshape([-1, 68, 3])
             idexp_lm3d_normalized = (idexp_lm3d - idexp_lm3d_mean) / idexp_lm3d_std
@@ -398,7 +403,7 @@ class GeneFace2Infer:
 
         cano_lm3d = (idexp_lm3d_mean + idexp_lm3d_std * idexp_lm3d_normalized) / 10 + self.face3d_helper.key_mean_shape[index_lm68_from_lm478].unsqueeze(0)
         eye_area_percent = self.opened_eye_area_percent * torch.ones([len(cano_lm3d), 1], dtype=cano_lm3d.dtype, device=cano_lm3d.device)
-        
+
         if inp['blink_mode'] == 'period':
             cano_lm3d, eye_area_percent = inject_blink_to_lm68(cano_lm3d, self.opened_eye_area_percent, self.closed_eye_area_percent)
             print("Injected blink to idexp_lm3d by directly editting.")
@@ -553,8 +558,8 @@ if __name__ == '__main__':
     import argparse, glob, tqdm
     parser = argparse.ArgumentParser()
     parser.add_argument("--a2m_ckpt", default='checkpoints/audio2motion_vae')  # checkpoints/0727_audio2secc/audio2secc_withlm2d100_randomframe
-    parser.add_argument("--head_ckpt", default='') 
-    parser.add_argument("--postnet_ckpt", default='') 
+    parser.add_argument("--head_ckpt", default='')
+    parser.add_argument("--postnet_ckpt", default='')
     parser.add_argument("--torso_ckpt", default='')
     parser.add_argument("--drv_aud", default='data/raw/val_wavs/MacronSpeech.wav')
     parser.add_argument("--drv_pose", default='nearest', help="目前仅支持源视频的pose,包括从头开始和指定区间两种,暂时不支持in-the-wild的pose")
@@ -564,9 +569,9 @@ if __name__ == '__main__':
     parser.add_argument("--temperature", default=0.2) # nearest | random
     parser.add_argument("--mouth_amp", default=0.4) # nearest | random
     parser.add_argument("--raymarching_end_threshold", default=0.01, help="increase it to improve fps") # nearest | random
-    parser.add_argument("--debug", action='store_true') 
-    parser.add_argument("--fast", action='store_true') 
-    parser.add_argument("--out_name", default='tmp.mp4') 
+    parser.add_argument("--debug", action='store_true')
+    parser.add_argument("--fast", action='store_true')
+    parser.add_argument("--out_name", default='tmp.mp4')
     parser.add_argument("--low_memory_usage", action='store_true', help='write img to video upon generated, leads to slower fps, but use less memory')
 
 
