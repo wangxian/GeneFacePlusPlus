@@ -24,8 +24,7 @@ from deep_3drecon.secc_renderer import SECC_Renderer
 from utils.commons.os_utils import multiprocess_glob
 
 
-face_model = ParametricFaceModel(bfm_folder='deep_3drecon/BFM',
-            camera_distance=10, focal=1015, keypoint_mode='mediapipe')
+face_model = ParametricFaceModel(bfm_folder='deep_3drecon/BFM', camera_distance=10, focal=1015, keypoint_mode='mediapipe')
 face_model.to(torch.device("cuda:0"))
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
